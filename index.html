@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PackFlow · 包装与装载一站式平台</title>
+<link rel="stylesheet" href="css/style.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <!-- 顶部栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">PF</div>
+      <div>
+        <div class="brand-name">PackFlow</div>
+        <div class="brand-sub">包装与装载一站式平台 · MVP</div>
+      </div>
+    </div>
+    <nav class="steps">
+      <button class="step active" data-tab="design"><span class="dot">1</span>包装设计</button>
+      <span class="arrow">→</span>
+      <button class="step" data-tab="pallet"><span class="dot">2</span>托盘码放</button>
+      <span class="arrow">→</span>
+      <button class="step" data-tab="container"><span class="dot">3</span>集装箱装载</button>
+      <span class="arrow">→</span>
+      <button class="step" data-tab="report"><span class="dot">4</span>装箱单/报告</button>
+    </nav>
+    <div class="top-actions">
+      <button id="btn-import" class="btn ghost" title="导入 CSV/Excel">导入数据</button>
+      <button id="btn-save" class="btn ghost" title="保存到浏览器">保存方案</button>
+      <button id="btn-load" class="btn ghost" title="读取本地方案">读取方案</button>
+      <input type="file" id="file-input" accept=".csv,.txt" hidden />
+    </div>
+  </header>
+
+  <!-- ========== 1. 包装设计 ========== -->
+  <main class="tab-panel active" id="tab-design">
+    <div class="layout">
+      <aside class="side">
+        <h3>SKU / 产品库</h3>
+        <div id="sku-list" class="sku-list"></div>
+        <button id="btn-add-sku" class="btn primary block">+ 新增 SKU</button>
+      </aside>
+      <section class="content">
+        <div class="card">
+          <h2>纸箱参数化设计</h2>
+          <p class="hint">定义产品外箱尺寸、重量与堆叠属性，输出统一货物单元（CargoUnit），供后续托盘码放与装柜使用。</p>
+          <form id="carton-form" class="form-grid">
+            <label>SKU 编号<input type="text" id="f-sku" placeholder="如 FB-1001" /></label>
+            <label>产品名称<input type="text" id="f-name" placeholder="如 弹跳杆 Pro" /></label>
+            <label>长 L (mm)<input type="number" id="f-l" min="1" value="400" /></label>
+            <label>宽 W (mm)<input type="number" id="f-w" min="1" value="300" /></label>
+            <label>高 H (mm)<input type="number" id="f-h" min="1" value="250" /></label>
+            <label>单箱毛重 (kg)<input type="number" id="f-weight" min="0" step="0.1" value="8" /></label>
+            <label>抗压强度 (kg)<input type="number" id="f-maxstack" min="0" value="120" title="可承受的堆叠压重" /></label>
+            <label>订单数量 (箱)<input type="number" id="f-qty" min="1" value="200" /></label>
+            <label class="row-check"><input type="checkbox" id="f-fragile" /> 易碎 / 禁止倒置</label>
+            <label>允许朝向
+              <select id="f-orient">
+                <option value="thishead">仅正立</option>
+                <option value="flip">可翻转堆叠</option>
+              </select>
+            </label>
+            <details class="dg-box">
+              <summary>⚠ 危险品申报（IMDG）</summary>
+              <div class="form-grid">
+                <label class="row-check span2"><input type="checkbox" id="f-dg" /> 本货为危险品</label>
+                <label>IMDG 类别
+                  <select id="f-dgclass">
+                    <option value="">— 非危险品 —</option>
+                    <option value="1">1 类 爆炸品</option>
+                    <option value="2">2 类 气体</option>
+                    <option value="3">3 类 易燃液体</option>
+                    <option value="4">4 类 易燃固体</option>
+                    <option value="5">5 类 氧化性物质</option>
+                    <option value="6">6 类 毒性物质</option>
+                    <option value="7">7 类 放射性</option>
+                    <option value="8">8 类 腐蚀品</option>
+                    <option value="9">9 类 杂项危险物</option>
+                  </select>
+                </label>
+                <label>UN 编号<input type="text" id="f-dgun" placeholder="如 UN1263" /></label>
+                <label>正确运输名称<input type="text" id="f-dgpsn" placeholder="Proper Shipping Name" /></label>
+                <label>包装类
+                  <select id="f-dgpg">
+                    <option value="">—</option>
+                    <option value="I">I</option>
+                    <option value="II">II</option>
+                    <option value="III">III</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+          </form>
+          <div class="actions">
+            <button id="btn-save-sku" class="btn primary">保存 SKU</button>
+            <button id="btn-preview" class="btn ghost">预览箱体</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>箱体预览</h3>
+          <div id="viz-carton" class="viz-box small"></div>
+          <div id="carton-summary" class="summary"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ========== 2. 托盘码放 ========== -->
+  <main class="tab-panel" id="tab-pallet">
+    <div class="layout">
+      <aside class="side">
+        <h3>选择 SKU</h3>
+        <select id="pallet-sku" class="full-select"></select>
+        <h3 style="margin-top:18px">托盘参数</h3>
+        <label class="stk">托盘长 (mm)<input type="number" id="p-l" value="1200" /></label>
+        <label class="stk">托盘宽 (mm)<input type="number" id="p-w" value="1000" /></label>
+        <label class="stk">托盘高 (mm)<input type="number" id="p-ph" value="150" /></label>
+        <label class="stk">最大码放高度 (mm)<input type="number" id="p-maxh" value="1800" /></label>
+        <label class="stk">托盘承重上限 (kg)<input type="number" id="p-maxw" value="1000" /></label>
+        <label class="stk row-check"><input type="checkbox" id="p-corner" checked /> 加护角</label>
+        <label class="stk row-check"><input type="checkbox" id="p-strap" checked /> 加绑带</label>
+        <button id="btn-calc-pallet" class="btn primary block" style="margin-top:14px">计算最优码放</button>
+      </aside>
+      <section class="content">
+        <div class="card">
+          <h2>托盘码放分析（Pallet Analysis）</h2>
+          <div id="pallet-stats" class="stat-grid"></div>
+        </div>
+        <div class="card">
+          <div class="viz-head">
+            <h3>3D 码放可视化</h3>
+            <div class="viz-tools">
+              <button class="btn ghost sm" id="pallet-reset-cam">复位视角</button>
+            </div>
+          </div>
+          <div id="viz-pallet" class="viz-box"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ========== 3. 集装箱装载 ========== -->
+  <main class="tab-panel" id="tab-container">
+    <div class="layout">
+      <aside class="side">
+        <h3>集装箱规格</h3>
+        <select id="cont-type" class="full-select">
+          <option value="20GP">20GP (5898×2352×2393)</option>
+          <option value="40GP">40GP (12032×2352×2393)</option>
+          <option value="40HQ" selected>40HQ (12032×2352×2698)</option>
+        </select>
+        <h3 style="margin-top:18px">装载货物</h3>
+        <div id="cargo-source" class="radio-group">
+          <label class="row-check"><input type="radio" name="src" value="pallet" checked /> 单货·托盘方案</label>
+          <label class="row-check"><input type="radio" name="src" value="carton" /> 单货·散箱装载</label>
+          <label class="row-check"><input type="radio" name="src" value="mix" /> 多货多柜混装</label>
+        </div>
+        <select id="cont-sku" class="full-select" style="margin-top:10px"></select>
+        <div id="mix-panel" style="display:none; margin-top:12px">
+          <h3>混装货物清单</h3>
+          <div id="mix-goods" class="goods-table"></div>
+          <label class="stk" style="margin-top:10px">柜数量上限（留空=自动）<input type="number" id="mix-maxc" placeholder="自动" min="1" /></label>
+          <button id="btn-calc-mix" class="btn primary block" style="margin-top:12px">计算多货多柜混装</button>
+          <div id="mix-containers" class="cont-chips"></div>
+        </div>
+        <h3 style="margin-top:18px">约束</h3>
+        <label class="stk row-check"><input type="checkbox" id="c-cog" checked /> 重心居中校验</label>
+        <label class="stk row-check"><input type="checkbox" id="c-stack" checked /> 堆叠强度限制</label>
+        <label class="stk row-check"><input type="checkbox" id="c-imdg" /> IMDG 危险品隔离校验</label>
+        <label class="stk row-check" id="c-imdg-sep-wrap" style="display:none"><input type="checkbox" id="c-imdg-sep" checked /> 自动分柜（按隔离要求）</label>
+        <label class="stk">集装箱最大载重 (kg)<input type="number" id="c-maxw" value="26000" /></label>
+        <button id="btn-calc-container" class="btn primary block" style="margin-top:14px">计算装柜方案</button>
+      </aside>
+      <section class="content">
+        <div class="card">
+          <h2>集装箱智能装载</h2>
+          <div id="container-stats" class="stat-grid"></div>
+          <div id="constraint-report" class="constraint-report"></div>
+          <div id="imdg-report" class="imdg-report" style="display:none"></div>
+        </div>
+        <div class="card">
+          <div class="viz-head">
+            <h3>3D 实时装柜</h3>
+            <div class="viz-tools">
+              <label class="mini">装载进度
+                <input type="range" id="load-progress" min="0" max="100" value="100" />
+              </label>
+              <button class="btn ghost sm" id="cont-reset-cam">复位视角</button>
+            </div>
+          </div>
+          <div id="viz-container" class="viz-box tall"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ========== 4. 报告 ========== -->
+  <main class="tab-panel" id="tab-report">
+    <div class="content wide">
+      <div class="card">
+        <div class="viz-head">
+          <h2>装箱单 & 重量分布报告</h2>
+          <button id="btn-print" class="btn primary sm">打印 / 导出 PDF</button>
+        </div>
+        <div id="report-body"></div>
+      </div>
+    </div>
+  </main>
+
+  <div id="toast" class="toast"></div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
