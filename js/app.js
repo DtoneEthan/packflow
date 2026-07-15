@@ -1,4 +1,5 @@
 import { state, CONTAINERS, makeCargoUnit, getSku, saveLocal, loadLocal, exportSkuJSON, importSkuJSON, fmt, fmt1 } from './state.js';
+import { pushSkus, pullSkus } from './cloud.js';
 import { analyzePallet, packContainer, checkConstraints, packMultiContainer, checkMultiConstraints, IMDG, checkDGCompatibility, partitionDG, mergeMultiResults, checkDGSegregation3m } from './algorithms.js';
 import { Scene3D } from './viz.js';
 
@@ -116,6 +117,51 @@ $('#sku-file-input').addEventListener('change', e => {
   };
   reader.readAsText(f, 'utf-8');
 });
+
+// ==================== 云端同步（GitHub 共享存储） ====================
+const GH_TOKEN_KEY = 'packflow_gh_token';
+function setGhStatus(msg, lvl) {
+  $('#gh-status').innerHTML = msg ? `<span class="${lvl || ''}">${msg}</span>` : '';
+}
+$('#gh-token').value = localStorage.getItem(GH_TOKEN_KEY) || '';
+$('#btn-gh-connect').addEventListener('click', () => {
+  const t = $('#gh-token').value.trim();
+  if (!t) { localStorage.removeItem(GH_TOKEN_KEY); setGhStatus('已清除令牌', 'warn'); return; }
+  localStorage.setItem(GH_TOKEN_KEY, t);
+  setGhStatus('令牌已保存（仅存于本浏览器，请使用 Fine-grained PAT 并仅授权本仓库 Contents 读写）', 'pass');
+  // 顺带验证：尝试拉取一次
+  doPull(true);
+});
+$('#btn-gh-push').addEventListener('click', async () => {
+  const t = localStorage.getItem(GH_TOKEN_KEY);
+  if (!t) { toast('请先填写并保存 GitHub PAT'); return; }
+  setGhStatus('上传中…');
+  try {
+    await pushSkus(t, exportSkuJSON());
+    setGhStatus('已上传到云端 ✓ ' + new Date().toLocaleTimeString('zh-CN'), 'pass');
+    toast('SKU 已上传到云端');
+  } catch (e) { setGhStatus('上传失败：' + e.message, 'fail'); toast('上传失败：' + e.message); }
+});
+$('#btn-gh-pull').addEventListener('click', () => doPull());
+async function doPull(silent) {
+  const t = localStorage.getItem(GH_TOKEN_KEY);
+  if (!t) { if (!silent) toast('请先填写并保存 GitHub PAT'); return; }
+  if (!silent) setGhStatus('拉取中…');
+  try {
+    await pullAndMerge(t);
+  } catch (e) {
+    if (!silent) { setGhStatus('拉取失败：' + e.message, 'fail'); toast('拉取失败：' + e.message); }
+    else console.warn('自动拉取云端失败:', e.message);
+  }
+}
+async function pullAndMerge(token) {
+  const txt = await pullSkus(token);
+  if (!txt) { setGhStatus('云端暂无数据（首次「上传到云端」将自动创建）', 'warn'); return; }
+  importSkuJSON(txt); saveLocal(); renderSkuList();
+  const cur = getSku(state.activeSkuId); if (cur) fillCartonForm(cur);
+  setGhStatus('已从云端拉取 ' + state.skus.length + ' 个 SKU ✓', 'pass');
+  toast('已从云端拉取 ' + state.skus.length + ' 个 SKU');
+}
 function renderSkuList() {
   const el = $('#sku-list');
   if (!state.skus.length) { el.innerHTML = '<div class="empty">暂无 SKU，点击下方新增</div>'; return; }
@@ -350,6 +396,9 @@ seed();
 fillCartonForm(getSku(state.activeSkuId) || makeCargoUnit());
 renderSkuList();
 switchTab('design');
+
+// 若已保存令牌，启动时静默拉取一次云端共享 SKU
+if (localStorage.getItem(GH_TOKEN_KEY)) { setGhStatus('已检测到令牌，正在拉取云端…'); doPull(true); }
 
 // ==================== 多货多柜混装 ====================
 // 根据装载来源切换：单货(托盘/散箱) 或 混装清单

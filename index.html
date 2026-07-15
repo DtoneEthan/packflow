@@ -114,6 +114,19 @@
           <div id="viz-carton" class="viz-box small"></div>
           <div id="carton-summary" class="summary"></div>
         </div>
+        <div class="card">
+          <h3>☁ 云端同步（多人共享）</h3>
+          <p class="hint">以 GitHub 仓库为共享存储：团队成员输入<b>同一仓库</b>的 Fine-grained PAT（仅授予本仓库 Contents 读写），即可共用同一份 SKU。数据存于独立分支 <code>packflow-data</code>，不影响站点、不触发 Pages 重建。</p>
+          <label class="stk">GitHub PAT（Fine-grained）
+            <input type="password" id="gh-token" placeholder="github_pat_xxx" autocomplete="off" />
+          </label>
+          <div class="actions">
+            <button id="btn-gh-connect" class="btn ghost sm">连接/保存令牌</button>
+            <button id="btn-gh-push" class="btn primary sm">上传到云端</button>
+            <button id="btn-gh-pull" class="btn ghost sm">从云端拉取</button>
+          </div>
+          <div id="gh-status" class="gh-status"></div>
+        </div>
       </section>
     </div>
   </main>
