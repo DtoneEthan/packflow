@@ -11,6 +11,11 @@ function toast(msg) {
   clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2200);
 }
 
+// localStorage 安全封装：沙箱/隐私模式/iframe 中可能抛 SecurityError，必须吞掉，绝不让它中断脚本
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
 // ---------- 3D 场景（懒加载） ----------
 let vizCarton, vizPallet, vizContainer;
 
@@ -123,17 +128,17 @@ const GH_TOKEN_KEY = 'packflow_gh_token';
 function setGhStatus(msg, lvl) {
   $('#gh-status').innerHTML = msg ? `<span class="${lvl || ''}">${msg}</span>` : '';
 }
-$('#gh-token').value = localStorage.getItem(GH_TOKEN_KEY) || '';
+$('#gh-token').value = lsGet(GH_TOKEN_KEY) || '';
 $('#btn-gh-connect').addEventListener('click', () => {
   const t = $('#gh-token').value.trim();
-  if (!t) { localStorage.removeItem(GH_TOKEN_KEY); setGhStatus('已清除令牌', 'warn'); return; }
-  localStorage.setItem(GH_TOKEN_KEY, t);
+  if (!t) { lsDel(GH_TOKEN_KEY); setGhStatus('已清除令牌', 'warn'); return; }
+  lsSet(GH_TOKEN_KEY, t);
   setGhStatus('令牌已保存（仅存于本浏览器，请使用 Fine-grained PAT 并仅授权本仓库 Contents 读写）', 'pass');
   // 顺带验证：尝试拉取一次
   doPull(true);
 });
 $('#btn-gh-push').addEventListener('click', async () => {
-  const t = localStorage.getItem(GH_TOKEN_KEY);
+  const t = lsGet(GH_TOKEN_KEY);
   if (!t) { toast('请先填写并保存 GitHub PAT'); return; }
   setGhStatus('上传中…');
   try {
@@ -144,7 +149,7 @@ $('#btn-gh-push').addEventListener('click', async () => {
 });
 $('#btn-gh-pull').addEventListener('click', () => doPull());
 async function doPull(silent) {
-  const t = localStorage.getItem(GH_TOKEN_KEY);
+  const t = lsGet(GH_TOKEN_KEY);
   if (!t) { if (!silent) toast('请先填写并保存 GitHub PAT'); return; }
   if (!silent) setGhStatus('拉取中…');
   try {
@@ -238,7 +243,6 @@ $('#btn-calc-container').addEventListener('click', () => {
   if (!sku) { toast('请先创建 SKU'); return; }
   const container = { ...CONTAINERS[$('#cont-type').value] };
   container.maxW = +$('#c-maxw').value || container.maxW;
-  const src = document.querySelector('input[name=src]:checked').value;
 
   let unit, needCount, mode;
   if (src === 'pallet') {
@@ -293,46 +297,7 @@ $('#cont-reset-cam').addEventListener('click', () => {
 });
 
 // ==================== 4. 报告 ====================
-function renderReport() {
-  const el = $('#report-body');
-  const r = state.containerResult;
-  if (!r) { el.innerHTML = '<div class="empty">请先完成集装箱装载计算，再查看装箱单</div>'; return; }
-  const sku = r.sku;
-  const p = state.palletResult;
-  const date = new Date().toLocaleDateString('zh-CN');
-  el.innerHTML = `
-    <div class="rep-h">
-      <div><div class="t">装箱单 / Packing List</div>
-        <div style="color:var(--muted);font-size:12px">生成日期 ${date} · PackFlow</div></div>
-      <div style="text-align:right;font-size:12px;color:var(--muted)">
-        柜型 <b style="color:var(--ink)">${r.container.name}</b><br>装载方式 ${r.mode}</div>
-    </div>
-    <div class="rep-grid">
-      <div class="rep-kv"><div class="k">SKU</div><div class="v">${sku.sku || '-'}</div></div>
-      <div class="rep-kv"><div class="k">总箱数</div><div class="v">${fmt(sku.qty)}</div></div>
-      <div class="rep-kv"><div class="k">所需柜量</div><div class="v">${r.containersNeeded} × ${r.container.name}</div></div>
-      <div class="rep-kv"><div class="k">单柜载重</div><div class="v">${fmt(r.totalWeight)} kg</div></div>
-      <div class="rep-kv"><div class="k">体积装载率</div><div class="v">${(r.fillRate*100).toFixed(1)}%</div></div>
-      <div class="rep-kv"><div class="k">重心偏移</div><div class="v">${(r.cog.offset*100).toFixed(1)}%</div></div>
-    </div>
-    <h3>货物明细</h3>
-    <table>
-      <thead><tr><th>项目</th><th>规格</th><th>数量/参数</th></tr></thead>
-      <tbody>
-        <tr><td>产品名称</td><td>${sku.name || '-'}</td><td>SKU ${sku.sku || '-'}</td></tr>
-        <tr><td>外箱尺寸</td><td>${sku.L}×${sku.W}×${sku.H} mm</td><td>单箱 ${sku.weight} kg</td></tr>
-        ${p ? `<tr><td>托盘方案</td><td>${p.cfg.PL}×${p.cfg.PW} mm · ${p.layers}层</td><td>每托 ${p.totalBoxes} 箱 / ${fmt(p.loadWeight)} kg</td></tr>` : ''}
-        <tr><td>单柜装载</td><td>${r.perFloor} 地面 × ${r.byHeight} 层</td><td>${r.perContainer} ${r.mode}/柜</td></tr>
-        <tr><td>总计</td><td>${r.container.name} × ${r.containersNeeded}</td><td>${fmt(sku.qty)} 箱</td></tr>
-      </tbody>
-    </table>
-    <h3>重量分布</h3>
-    <div class="rep-kv" style="background:#fff">
-      <div class="k">单柜载重 ${fmt(r.totalWeight)} kg / 上限 ${fmt(r.container.maxW)} kg</div>
-      <div class="bar"><span style="width:${Math.min(100, r.totalWeight / r.container.maxW * 100).toFixed(0)}%"></span></div>
-      <div class="k" style="margin-top:10px">纵向重心偏移 ${(r.cog.offX*100).toFixed(1)}% / 横向 ${(r.cog.offZ*100).toFixed(1)}%（理想 0%，居中越好）</div>
-    </div>`;
-}
+// 注：renderReport 的统一实现（支持单货与多货多柜）见文件后部「报告支持多柜」节，此处不再重复定义。
 $('#btn-print').addEventListener('click', () => window.print());
 
 // ==================== 数据导入/保存 ====================
@@ -398,7 +363,7 @@ renderSkuList();
 switchTab('design');
 
 // 若已保存令牌，启动时静默拉取一次云端共享 SKU
-if (localStorage.getItem(GH_TOKEN_KEY)) { setGhStatus('已检测到令牌，正在拉取云端…'); doPull(true); }
+if (lsGet(GH_TOKEN_KEY)) { setGhStatus('已检测到令牌，正在拉取云端…'); doPull(true); }
 
 // ==================== 多货多柜混装 ====================
 // 根据装载来源切换：单货(托盘/散箱) 或 混装清单
@@ -723,3 +688,6 @@ function renderMultiReport(el, mr) {
     el.innerHTML += imdgHtml;
   }
 }
+
+// 标记应用已成功初始化（供 index.html 的加载失败横幅判断）
+window.__packflowReady = true;

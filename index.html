@@ -8,8 +8,7 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    "three": "./js/vendor/three.module.js"
   }
 }
 </script>
@@ -235,6 +234,30 @@
 
   <div id="toast" class="toast"></div>
 </div>
+
+<!-- 应用加载失败时的可见横幅（模块/CDN 失败时不再静默失灵） -->
+<div id="fatal-banner" class="fatal-banner" style="display:none"></div>
+<script>
+  window.__packflowReady = false;
+  window.__lastErr = null;
+  window.addEventListener('error', function (e) {
+    window.__lastErr = (e && e.message) ? e.message : (e && e.target && e.target.src ? ('资源加载失败: ' + e.target.src) : '未知错误');
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    window.__lastErr = (e && e.reason && e.reason.message) ? e.reason.message : '未处理的异步错误';
+  });
+  setTimeout(function () {
+    if (!window.__packflowReady) {
+      var b = document.getElementById('fatal-banner');
+      if (b) {
+        b.style.display = 'block';
+        b.innerHTML = '⚠ 应用未能正常启动（按钮无响应通常源于此）。可能原因：' +
+          (window.__lastErr ? ('<br><code>' + String(window.__lastErr).slice(0, 200) + '</code>') : '') +
+          '<br>请先<b>硬刷新</b>（Windows：Ctrl+F5 / Mac：Cmd+Shift+R）。本版已将 Three.js 本地自托管，若仍失败多为浏览器拦截了模块脚本或网络无法访问仓库资源，可在控制台 Console 查看详情。';
+      }
+    }
+  }, 4000);
+</script>
 
 <script type="module" src="js/app.js"></script>
 </body>

@@ -133,6 +133,12 @@ h3{font-size:14px;margin:0 0 10px;color:#374151;}
   pointer-events:none;transition:.25s;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.2);}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
+/* 应用加载失败横幅 */
+.fatal-banner{position:fixed;top:0;left:0;right:0;z-index:999;background:#dc2626;color:#fff;
+  padding:14px 22px;font-size:13px;line-height:1.6;box-shadow:0 4px 14px rgba(0,0,0,.25);}
+.fatal-banner code{display:block;margin-top:6px;background:rgba(0,0,0,.25);padding:6px 8px;border-radius:6px;
+  font-size:12px;word-break:break-all;}
+
 .empty{color:var(--muted);font-size:13px;padding:20px;text-align:center;}
 
 /* ===== 危险品申报 (IMDG) ===== */

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls } from './vendor/OrbitControls.js';
 
 // 通用 3D 场景封装（毫米 → 场景单位按 /1000 米）
 export class Scene3D {
