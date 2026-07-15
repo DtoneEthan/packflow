@@ -46,19 +46,38 @@ export function getSku(id){ return state.skus.find(s => s.id === id); }
 
 // 本地持久化
 const KEY = 'packflow_state_v1';
+// 写入浏览器 localStorage；在沙箱 iframe 等禁用存储的环境会失败，返回 false
 export function saveLocal(){
-  const data = { skus: state.skus, activeSkuId: state.activeSkuId };
-  localStorage.setItem(KEY, JSON.stringify(data));
+  try{
+    const data = { skus: state.skus, activeSkuId: state.activeSkuId };
+    localStorage.setItem(KEY, JSON.stringify(data));
+    return true;
+  }catch(e){ return false; }
 }
 export function loadLocal(){
-  const raw = localStorage.getItem(KEY);
-  if(!raw) return false;
   try{
+    const raw = localStorage.getItem(KEY);
+    if(!raw) return false;
     const d = JSON.parse(raw);
     state.skus = (d.skus||[]).map(makeCargoUnit);
     state.activeSkuId = d.activeSkuId || (state.skus[0]?.id ?? null);
     return true;
   }catch(e){ return false; }
+}
+// 导出 SKU 为 JSON 字符串（文件级保存，不受 localStorage 限制）
+export function exportSkuJSON(){
+  return JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), skus: state.skus }, null, 2);
+}
+// 从 JSON 导入 SKU（合并/覆盖，按 id 去重）
+export function importSkuJSON(text){
+  const d = JSON.parse(text);
+  const arr = Array.isArray(d) ? d : d.skus;
+  if(!Array.isArray(arr)) throw new Error('文件格式不正确');
+  const imported = arr.map(makeCargoUnit);
+  const map = new Map(state.skus.map(s => [s.id, s]));
+  imported.forEach(s => map.set(s.id, s));
+  state.skus = [...map.values()];
+  state.activeSkuId = state.skus[0]?.id ?? null;
 }
 
 export function fmt(n){ return new Intl.NumberFormat('zh-CN').format(Math.round(n)); }

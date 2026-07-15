@@ -1,4 +1,4 @@
-import { state, CONTAINERS, makeCargoUnit, getSku, saveLocal, loadLocal, fmt, fmt1 } from './state.js';
+import { state, CONTAINERS, makeCargoUnit, getSku, saveLocal, loadLocal, exportSkuJSON, importSkuJSON, fmt, fmt1 } from './state.js';
 import { analyzePallet, packContainer, checkConstraints, packMultiContainer, checkMultiConstraints, IMDG, checkDGCompatibility, partitionDG, mergeMultiResults, checkDGSegregation3m } from './algorithms.js';
 import { Scene3D } from './viz.js';
 
@@ -78,12 +78,43 @@ $('#btn-save-sku').addEventListener('click', () => {
   const existing = getSku(state.activeSkuId);
   if (existing) Object.assign(existing, s);
   else { s.id = undefined; const nu = makeCargoUnit(s); state.skus.push(nu); state.activeSkuId = nu.id; }
-  saveLocal(); renderSkuList(); toast('SKU 已保存');
+  const ok = saveLocal();
+  renderSkuList();
+  if (ok) toast('SKU 已保存到本浏览器');
+  else toast('本浏览器禁止本地存储（预览沙箱），请改用「导出 JSON」保存');
 });
 $('#btn-add-sku').addEventListener('click', () => {
   state.activeSkuId = null;
   fillCartonForm(makeCargoUnit({ sku: '', name: '' }));
   renderSkuList(); previewCarton();
+});
+
+// SKU 导出 / 导入 JSON（文件级保存，任何环境可用，可跨设备）
+$('#btn-export-sku').addEventListener('click', () => {
+  if (!state.skus.length) { toast('没有可导出的 SKU'); return; }
+  const blob = new Blob([exportSkuJSON()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'packflow_skus_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(`已导出 ${state.skus.length} 个 SKU 到 JSON 文件`);
+});
+$('#btn-import-sku').addEventListener('click', () => $('#sku-file-input').click());
+$('#sku-file-input').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      importSkuJSON(reader.result);
+      saveLocal();
+      renderSkuList();
+      const cur = getSku(state.activeSkuId); if (cur) fillCartonForm(cur);
+      toast(`已导入 ${state.skus.length} 个 SKU`);
+    } catch (err) { toast('导入失败：' + err.message); }
+    e.target.value = '';
+  };
+  reader.readAsText(f, 'utf-8');
 });
 function renderSkuList() {
   const el = $('#sku-list');
@@ -288,7 +319,11 @@ function importCSV(text) {
   const cur = getSku(state.activeSkuId); if (cur) fillCartonForm(cur);
   toast(`成功导入 ${n} 个 SKU`);
 }
-$('#btn-save').addEventListener('click', () => { saveLocal(); toast('方案已保存到浏览器'); });
+$('#btn-save').addEventListener('click', () => {
+  const ok = saveLocal();
+  if (ok) toast('方案已保存到本浏览器');
+  else toast('本浏览器禁止本地存储，请改用「导出 JSON」保存');
+});
 $('#btn-load').addEventListener('click', () => {
   if (loadLocal()) { renderSkuList(); const c = getSku(state.activeSkuId); if (c) fillCartonForm(c); toast('已读取本地方案'); }
   else toast('没有找到已保存的方案');
