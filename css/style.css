@@ -199,3 +199,8 @@ h3{font-size:14px;margin:0 0 10px;color:#374151;}
 .cont-block{margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#f8fafc;}
 .cont-block b{font-size:13px;color:var(--brand-d);}
 .cont-block table{margin-top:8px;}
+
+/* ===== 署名页脚 ===== */
+.site-footer{margin-top:auto;padding:16px 22px;text-align:center;color:var(--muted);font-size:12px;
+  border-top:1px solid var(--line);background:var(--panel);letter-spacing:.2px;}
+.site-footer a{color:var(--brand);text-decoration:none;}
