@@ -691,3 +691,10 @@ function renderMultiReport(el, mr) {
 
 // 标记应用已成功初始化（供 index.html 的加载失败横幅判断）
 window.__packflowReady = true;
+// 应用已就绪：主动隐藏加载失败横幅（即便此前因 three.js 慢加载短暂弹出，也不应继续遮档 UI）
+(function () {
+  try {
+    var b = document.getElementById('fatal-banner');
+    if (b) b.style.display = 'none';
+  } catch (e) {}
+})();
