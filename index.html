@@ -136,10 +136,25 @@
       <aside class="side">
         <h3>选择 SKU</h3>
         <select id="pallet-sku" class="full-select"></select>
+        <h3 style="margin-top:18px">托盘模式</h3>
+        <div class="radio-group" id="pmode-wrap">
+          <label class="row-check"><input type="radio" name="pmode" value="pallet" checked /> 标准托盘（货物码在托盘上）</label>
+          <label class="row-check"><input type="radio" name="pmode" value="floor" /> 无托盘·落地码放</label>
+        </div>
         <h3 style="margin-top:18px">托盘参数</h3>
+        <label class="stk">托盘规格预设
+          <select id="p-preset">
+            <option value="1200x1000x150">欧标 1200×1000×150</option>
+            <option value="1200x800x150">芬标 1200×800×150</option>
+            <option value="1140x1140x150">澳标 1140×1140×150</option>
+            <option value="1100x1100x150">日标 1100×1100×150</option>
+            <option value="1219x1016x152">美标 1219×1016×152</option>
+            <option value="custom">自定义（手动输入）</option>
+          </select>
+        </label>
         <label class="stk">托盘长 (mm)<input type="number" id="p-l" value="1200" /></label>
         <label class="stk">托盘宽 (mm)<input type="number" id="p-w" value="1000" /></label>
-        <label class="stk">托盘高 (mm)<input type="number" id="p-ph" value="150" /></label>
+        <label class="stk" id="p-ph-wrap">托盘高 (mm)<input type="number" id="p-ph" value="150" /></label>
         <label class="stk">最大码放高度 (mm)<input type="number" id="p-maxh" value="1800" /></label>
         <label class="stk">托盘承重上限 (kg)<input type="number" id="p-maxw" value="1000" /></label>
         <label class="stk row-check"><input type="checkbox" id="p-corner" checked /> 加护角</label>
@@ -148,7 +163,7 @@
       </aside>
       <section class="content">
         <div class="card">
-          <h2>托盘码放分析（Pallet Analysis）</h2>
+          <h2 id="pallet-title">托盘码放分析（Pallet Analysis）</h2>
           <div id="pallet-stats" class="stat-grid"></div>
         </div>
         <div class="card">

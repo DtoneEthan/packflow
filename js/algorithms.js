@@ -74,12 +74,15 @@ function fillRect(x, y, w, h, bl, bw, out, depth) {
 }
 
 // --- 托盘码放分析 ---
+// cfg.usePallet: true=标准托盘（货物码在托盘上）/ false=无托盘落地码放
 export function analyzePallet(sku, cfg) {
-  const { PL, PW, PH, maxH, maxW } = cfg;
+  const usePallet = cfg.usePallet !== false;
+  const PH = usePallet ? (cfg.PH || 0) : 0;
+  const { PL, PW, maxH, maxW } = cfg;
   const layer = packLayer(PL, PW, sku.L, sku.W);
   const perLayer = layer.count;
 
-  const stackHeight = maxH; // 托盘上方可码放净高
+  const stackHeight = maxH; // 码放净高（托盘模式下为托盘上方，落地模式下为地面以上）
   const byHeight = Math.floor(stackHeight / sku.H);
   // 抗压：一箱可承受 maxStack kg，则其上可压 floor(maxStack/weight) 箱，加自身
   const byStack = sku.weight > 0 ? Math.floor(sku.maxStack / sku.weight) + 1 : byHeight;
@@ -92,7 +95,8 @@ export function analyzePallet(sku, cfg) {
 
   const footprintUtil = PL * PW > 0 ? (perLayer * sku.L * sku.W) / (PL * PW) : 0;
   const loadHeight = PH + layers * sku.H;
-  const loadWeight = totalBoxes * sku.weight;
+  const palletWeight = usePallet ? 25 : 0; // 空托盘约 25kg，落地码放无此项
+  const loadWeight = totalBoxes * sku.weight + palletWeight;
 
   // 稳定性评分：底面利用率 + 高宽比（越矮越稳）
   const aspect = loadHeight / Math.min(PL, PW);
@@ -102,19 +106,21 @@ export function analyzePallet(sku, cfg) {
   // 限制层数的瓶颈
   let limit = '高度';
   if (layers === byStack && byStack <= byHeight) limit = '抗压强度';
-  if (layers === byWeight && byWeight <= byHeight && byWeight <= byStack) limit = '托盘承重';
+  if (layers === byWeight && byWeight <= byHeight && byWeight <= byStack) limit = usePallet ? '托盘承重' : '承重上限';
+
+  const labelPrefix = usePallet ? '托盘' : '落地堆';
 
   return {
-    sku, cfg, perLayer, layers, totalBoxes,
+    sku, cfg, usePallet, perLayer, layers, totalBoxes,
     footprintUtil, loadHeight, loadWeight, stability, limitBy: limit,
     layerRects: layer.rects,
-    // 托盘作为货物单元（数据契约）传给装柜
+    // 作为货物单元（数据契约）传给装柜；落地模式去掉托盘高与托盘自重
     unit: {
       L: PL, W: PW, H: loadHeight,
-      weight: loadWeight + 25, // +空托盘约 25kg
-      maxStack: sku.maxStack * 0.8, // 托盘整体抗压保守取值
+      weight: loadWeight,
+      maxStack: sku.maxStack * 0.8, // 整体抗压保守取值
       stackable: aspect < 1.6 && !sku.fragile,
-      label: `托盘(${sku.sku||sku.name})`,
+      label: `${labelPrefix}(${sku.sku || sku.name})`,
     },
   };
 }

@@ -200,30 +200,64 @@ function refreshPalletSkuSelect() {
   sel.innerHTML = state.skus.map(s => `<option value="${s.id}">${s.sku || s.name || s.id}</option>`).join('');
   if (state.activeSkuId) sel.value = state.activeSkuId;
 }
+// 统一从 DOM 读取托盘参数（含模式：标准托盘 / 无托盘落地码放 + 常用规格预设）
+function readPalletCfg() {
+  const usePallet = document.querySelector('input[name=pmode]:checked').value === 'pallet';
+  return {
+    PL: +$('#p-l').value || 1200,
+    PW: +$('#p-w').value || 1000,
+    PH: usePallet ? (+$('#p-ph').value || 0) : 0,
+    maxH: +$('#p-maxh').value || 1800,
+    maxW: +$('#p-maxw').value || 1000,
+    corner: $('#p-corner').checked,
+    strap: $('#p-strap').checked,
+    usePallet,
+  };
+}
+// 切换托盘模式：无托盘时禁用“托盘高”输入并同步 UI
+function applyPalletMode() {
+  const usePallet = document.querySelector('input[name=pmode]:checked').value === 'pallet';
+  const ph = $('#p-ph'), phWrap = $('#p-ph-wrap');
+  ph.disabled = !usePallet;
+  phWrap.style.opacity = usePallet ? '1' : '0.45';
+  phWrap.style.pointerEvents = usePallet ? '' : 'none';
+}
+// 托盘规格预设下拉：选择后自动填入 长/宽/高
+$('#p-preset').addEventListener('change', e => {
+  const v = e.target.value;
+  if (v === 'custom') return;
+  const [l, w, h] = v.split('x').map(Number);
+  if (l && w && h) { $('#p-l').value = l; $('#p-w').value = w; $('#p-ph').value = h; }
+});
+document.querySelectorAll('input[name=pmode]').forEach(r => r.addEventListener('change', applyPalletMode));
+applyPalletMode();
+
 $('#btn-calc-pallet').addEventListener('click', () => {
   const sku = getSku($('#pallet-sku').value);
   if (!sku) { toast('请先在包装设计中创建 SKU'); return; }
-  const cfg = {
-    PL: +$('#p-l').value, PW: +$('#p-w').value, PH: +$('#p-ph').value,
-    maxH: +$('#p-maxh').value, maxW: +$('#p-maxw').value,
-    corner: $('#p-corner').checked, strap: $('#p-strap').checked,
-  };
+  const cfg = readPalletCfg();
   const res = analyzePallet(sku, cfg);
   state.palletResult = res;
+  $('#pallet-title').textContent = res.usePallet
+    ? '托盘码放分析（Pallet Analysis）'
+    : '落地码放分析（Floor Stacking）';
   renderPalletStats(res);
   if (vizPallet) vizPallet.showPallet(res);
-  toast(`码放完成：每托 ${res.totalBoxes} 箱`);
+  toast(res.usePallet ? `码放完成：每托 ${res.totalBoxes} 箱` : `落地码放完成：每堆 ${res.totalBoxes} 箱`);
 });
 function renderPalletStats(r) {
   const stab = r.stability >= 75 ? 'good' : r.stability >= 55 ? 'warn' : 'bad';
+  const pal = r.usePallet; // 托盘模式文案 vs 落地模式文案
+  const boxWord = pal ? '整托' : '整堆';
+  const stackWord = pal ? '整托' : '堆码';
   $('#pallet-stats').innerHTML = `
     <div class="stat"><div class="v">${r.perLayer}</div><div class="k">每层箱数</div></div>
     <div class="stat"><div class="v">${r.layers}</div><div class="k">码放层数</div></div>
-    <div class="stat"><div class="v good">${r.totalBoxes}</div><div class="k">整托总箱数</div></div>
+    <div class="stat"><div class="v good">${r.totalBoxes}</div><div class="k">${boxWord}总箱数</div></div>
     <div class="stat"><div class="v">${(r.footprintUtil*100).toFixed(0)}%</div><div class="k">底面利用率</div></div>
     <div class="stat"><div class="v ${stab}">${r.stability}</div><div class="k">稳定性评分</div></div>
-    <div class="stat"><div class="v">${fmt(r.loadHeight)}<span style="font-size:12px">mm</span></div><div class="k">整托高度</div></div>
-    <div class="stat"><div class="v">${fmt(r.loadWeight)}<span style="font-size:12px">kg</span></div><div class="k">整托毛重</div></div>
+    <div class="stat"><div class="v">${fmt(r.loadHeight)}<span style="font-size:12px">mm</span></div><div class="k">${stackWord}总高</div></div>
+    <div class="stat"><div class="v">${fmt(r.loadWeight)}<span style="font-size:12px">kg</span></div><div class="k">${pal ? '整托毛重' : '货物总重'}</div></div>
     <div class="stat"><div class="v warn" style="font-size:15px">${r.limitBy}</div><div class="k">层数瓶颈</div></div>`;
 }
 $('#pallet-reset-cam').addEventListener('click', () => { if (state.palletResult && vizPallet) vizPallet.showPallet(state.palletResult); });
@@ -247,11 +281,8 @@ $('#btn-calc-container').addEventListener('click', () => {
   let unit, needCount, mode;
   if (src === 'pallet') {
     if (!state.palletResult || state.palletResult.sku.id !== sku.id) {
-      // 自动按当前托盘参数算一遍
-      const cfg = {
-        PL: +$('#p-l').value || 1200, PW: +$('#p-w').value || 1000, PH: +$('#p-ph').value || 150,
-        maxH: +$('#p-maxh').value || 1800, maxW: +$('#p-maxw').value || 1000,
-      };
+      // 自动按当前托盘参数算一遍（含托盘/落地模式）
+      const cfg = readPalletCfg();
       state.palletResult = analyzePallet(sku, cfg);
     }
     unit = state.palletResult.unit;

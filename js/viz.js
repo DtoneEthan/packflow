@@ -138,12 +138,15 @@ export class Scene3D {
     const THREE = this.THREE, S = 1000;
     this.clear();
     const { cfg, sku, layerRects, layers } = res;
-    const PL = cfg.PL / S, PW = cfg.PW / S, PH = cfg.PH / S;
-    const pal = new THREE.Mesh(
-      new THREE.BoxGeometry(PL, PH, PW),
-      new THREE.MeshStandardMaterial({ color: 0x9c6b3f, roughness: 0.9 }));
-    pal.position.set(0, PH / 2, 0);
-    this.group.add(pal);
+    const PL = cfg.PL / S, PW = cfg.PW / S;
+    const palH = res.cfg.usePallet === false ? 0 : (cfg.PH / S); // 无托盘模式不画托盘板
+    if (palH > 0) {
+      const pal = new THREE.Mesh(
+        new THREE.BoxGeometry(PL, palH, PW),
+        new THREE.MeshStandardMaterial({ color: 0x9c6b3f, roughness: 0.9 }));
+      pal.position.set(0, palH / 2, 0);
+      this.group.add(pal);
+    }
 
     const ox = -PL / 2, oz = -PW / 2;
     const palette = [0x3b82f6, 0x0ea5e9, 0x22c55e, 0xf59e0b, 0x8b5cf6, 0xef4444];
@@ -153,7 +156,7 @@ export class Scene3D {
       for (const r of layerRects) {
         const bw = r.w / S, bd = r.h / S, bh = sku.H / S;
         const box = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat);
-        box.position.set(ox + r.x / S + bw / 2, PH + layer * bh + bh / 2, oz + r.y / S + bd / 2);
+        box.position.set(ox + r.x / S + bw / 2, palH + layer * bh + bh / 2, oz + r.y / S + bd / 2);
         this.group.add(box);
         const e = new THREE.LineSegments(
           new THREE.EdgesGeometry(box.geometry),
