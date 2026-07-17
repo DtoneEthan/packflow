@@ -42,7 +42,7 @@ function readCartonForm() {
     name: $('#f-name').value.trim(),
     L: $('#f-l').value, W: $('#f-w').value, H: $('#f-h').value,
     weight: $('#f-weight').value, maxStack: $('#f-maxstack').value,
-    qty: $('#f-qty').value,
+    qty: $('#f-qty').value, perCarton: $('#f-percarton').value,
     fragile: $('#f-fragile').checked,
     orient: $('#f-orient').value,
     dg: {
@@ -59,6 +59,7 @@ function fillCartonForm(s) {
   $('#f-l').value = s.L; $('#f-w').value = s.W; $('#f-h').value = s.H;
   $('#f-weight').value = s.weight; $('#f-maxstack').value = s.maxStack;
   $('#f-qty').value = s.qty; $('#f-fragile').checked = s.fragile;
+  $('#f-percarton').value = s.perCarton > 1 ? s.perCarton : 1;
   $('#f-orient').value = s.orient;
   $('#f-dg').checked = !!s.dg?.isDg;
   $('#f-dgclass').value = s.dg?.imdgClass || '';
@@ -70,11 +71,13 @@ function previewCarton() {
   const s = readCartonForm();
   if (vizCarton) vizCarton.showCarton(s);
   const vol = (s.L * s.W * s.H) / 1e9;
+  const perCarton = s.perCarton > 1 ? s.perCarton : 1;
+  const innerUnits = s.qty * perCarton;
   $('#carton-summary').innerHTML =
     `外箱体积 <b>${fmt1(vol * 1000)}</b> L　|　单箱毛重 <b>${s.weight}</b> kg　|　
      订单总量 <b>${fmt(s.qty)}</b> 箱　|　总毛重 <b>${fmt(s.qty * s.weight)}</b> kg
-     <br>抗压强度 ${s.maxStack} kg　|　${s.fragile ? '⚠ 易碎/禁止倒置' : '常规货'}　|　
-     ${s.orient === 'flip' ? '可翻转堆叠' : '仅正立'}`;
+     <br>每箱 <b>${perCarton}</b> 件　|　共 <b>${fmt(innerUnits)}</b> 件　|　抗压 ${s.maxStack} kg
+     <br>${s.fragile ? '⚠ 易碎/禁止倒置' : '常规货'}　|　${s.orient === 'flip' ? '可翻转堆叠' : '仅正立'}`;
 }
 $('#carton-form').addEventListener('input', () => { if (vizCarton) previewCarton(); });
 $('#btn-preview').addEventListener('click', previewCarton);
@@ -279,7 +282,8 @@ $('#btn-calc-container').addEventListener('click', () => {
   const container = { ...CONTAINERS[$('#cont-type').value] };
   container.maxW = +$('#c-maxw').value || container.maxW;
 
-  let unit, needCount, mode;
+  let unit, needCount, mode, innerUnits;
+  const perCarton = sku.perCarton > 1 ? sku.perCarton : 1;
   if (src === 'pallet') {
     if (!state.palletResult || state.palletResult.sku.id !== sku.id) {
       // 自动按当前托盘参数算一遍（含托盘/落地模式）
@@ -289,15 +293,22 @@ $('#btn-calc-container').addEventListener('click', () => {
     unit = state.palletResult.unit;
     needCount = Math.ceil(sku.qty / state.palletResult.totalBoxes);
     mode = '托盘';
+    innerUnits = needCount * state.palletResult.totalBoxes * perCarton; // 托数×每托箱数×每箱件数
   } else {
+    // 整箱 / 拆箱混装：按单位（箱/件）换算实际装载箱数
+    const reqUnit = $('#c-qtyunit')?.value || 'carton';
+    const reqQty = Math.max(1, +$('#c-qty').value || sku.qty);
+    needCount = toCartons(reqQty, reqUnit, perCarton);
     unit = { L: sku.L, W: sku.W, H: sku.H, weight: sku.weight, stackable: !sku.fragile };
-    needCount = sku.qty;
-    mode = '散箱';
+    mode = reqUnit === 'unit' ? '整箱(按件换算)' : '整箱';
+    innerUnits = needCount * perCarton;
   }
 
   const opts = { cog: $('#c-cog').checked, stack: $('#c-stack').checked };
   const res = packContainer(unit, container, needCount, opts);
   res.mode = mode; res.needCount = needCount; res.sku = sku;
+  res.perCarton = perCarton;
+  res.innerUnits = innerUnits;
   state.containerResult = res;
 
   renderContainerStats(res);
@@ -537,9 +548,33 @@ function syncCargoMode() {
   const mix = src === 'mix';
   const mp = $('#mix-panel'); if (mp) mp.style.display = mix ? 'block' : 'none';
   const cs = $('#cont-sku'); if (cs) cs.style.display = mix ? 'none' : 'block';
+  const qb = $('#c-qty-block'); if (qb) qb.style.display = src === 'carton' ? 'block' : 'none';
+  if (src === 'carton') {
+    const sku = getSku($('#cont-sku').value);
+    if (sku) $('#c-qty').value = sku.qty; // 默认取订单箱数
+    $('#c-qtyunit').value = 'carton';
+    updateCQtyHint();
+  }
   if (mix) renderMixGoods();
 }
+function updateCQtyHint() {
+  const sku = getSku($('#cont-sku').value);
+  const unit = $('#c-qtyunit')?.value;
+  const hint = $('#c-qty-hint');
+  if (!sku || !hint) return;
+  const perCarton = sku.perCarton > 1 ? sku.perCarton : 1;
+  if (unit === 'unit' && perCarton > 1) {
+    const n = Math.max(1, +$('#c-qty').value || 0);
+    const cartons = Math.ceil(n / perCarton);
+    hint.textContent = `拆箱混装：${fmt(n)} 件 ÷ 每箱 ${perCarton} 件 = ${cartons} 箱（按整箱装载）`;
+  } else {
+    hint.textContent = perCarton > 1 ? `整箱装载：每箱 ${perCarton} 件，共 ${fmt((+$('#c-qty').value || 0) * perCarton)} 件` : '整箱装载：按外箱（箱）为单位';
+  }
+}
 $$('input[name=src]').forEach(r => r.addEventListener('change', syncCargoMode));
+$('#c-qtyunit')?.addEventListener('change', updateCQtyHint);
+$('#c-qty')?.addEventListener('input', updateCQtyHint);
+$('#cont-sku')?.addEventListener('change', () => { if (document.querySelector('input[name=src]:checked')?.value === 'carton') { const s = getSku($('#cont-sku').value); if (s) $('#c-qty').value = s.qty; updateCQtyHint(); } });
 
 // IMDG 开关联动：仅在混装 + 勾选时显示自动分柜
 function syncImdg() {
@@ -567,6 +602,12 @@ function defaultMixQty(s, src) {
   }
   return { qty: s.qty, unit: '箱' };
 }
+// 按单位（箱/件）换算实际装载箱数：件模式且每箱>1件时 ceil(件/每箱)
+function toCartons(qty, unit, perCarton) {
+  qty = Math.max(1, Math.round(qty) || 1);
+  if (unit === 'unit' && perCarton > 1) return Math.ceil(qty / perCarton);
+  return qty;
+}
 
 // 渲染混装货物清单（勾选 + 来源 + 数量）
 function renderMixGoods() {
@@ -578,11 +619,16 @@ function renderMixGoods() {
     const row = document.createElement('div');
     row.className = 'g-row'; row.dataset.sku = s.id;
     const dgBadge = s.dg?.isDg ? `<span class="dg-badge sm">⚠${s.dg.imdgClass || 'DG'}</span>` : '';
+    const perCarton = s.perCarton > 1 ? s.perCarton : 1;
+    const uSel = perCarton > 1
+      ? `<select class="g-ucount" title="装载数量单位"><option value="carton">箱</option><option value="unit">件</option></select>`
+      : `<select class="g-ucount" title="装载数量单位" disabled><option value="carton">箱</option></select>`;
     row.innerHTML = `
       <input type="checkbox" class="g-chk" checked />
-      <div class="g-name">${s.sku || s.name || s.id} ${dgBadge}<span class="g-dim">${s.L}×${s.W}×${s.H}mm · ${s.weight}kg</span></div>
-      <select class="g-src"><option value="pallet">托盘</option><option value="carton">散箱</option></select>
-      <label class="g-q">数量 <input type="number" class="g-qty" min="1" value="${def.qty}" /><span class="g-unit">${def.unit}</span></label>`;
+      <div class="g-name">${s.sku || s.name || s.id} ${dgBadge}<span class="g-dim">${s.L}×${s.W}×${s.H}mm · ${s.weight}kg · 每箱${perCarton}件</span></div>
+      <select class="g-src"><option value="pallet">托盘</option><option value="carton" selected>整箱</option></select>
+      <label class="g-q">数量 <input type="number" class="g-qty" min="1" value="${def.qty}" /><span class="g-unit">${def.unit}</span></label>
+      ${uSel}`;
     el.appendChild(row);
     row.querySelector('.g-src').addEventListener('change', e => {
       const d = defaultMixQty(s, e.target.value);
@@ -600,18 +646,23 @@ function buildMixGoods() {
     if (!row.querySelector('.g-chk').checked) return;
     const sku = getSku(row.dataset.sku); if (!sku) return;
     const src = row.querySelector('.g-src').value;
-    const qty = Math.max(1, +row.querySelector('.g-qty').value || 1);
+    const perCarton = sku.perCarton > 1 ? sku.perCarton : 1;
+    const uCount = row.querySelector('.g-ucount')?.value || 'carton'; // 件/箱
+    let qty = Math.max(1, +row.querySelector('.g-qty').value || 1);   // 数量（按 uCount 单位）
     const dgClass = sku.dg?.isDg ? sku.dg.imdgClass : null;
     if (src === 'pallet') {
       const pr = estPallet(sku);
-      goods.push({ unit: { ...pr.unit, label: sku.sku || sku.name, dgClass }, qty });
+      goods.push({ unit: { ...pr.unit, label: sku.sku || sku.name, dgClass, perCarton }, qty });
     } else {
+      // 整箱 / 拆箱混装：件模式时换算为箱数
+      const cartons = toCartons(qty, uCount, perCarton);
       goods.push({
         unit: {
           L: sku.L, W: sku.W, H: sku.H, weight: sku.weight,
           stackable: !sku.fragile, maxStack: sku.maxStack,
-          label: sku.sku || sku.name, orient: sku.orient, dgClass,
-        }, qty,
+          label: sku.sku || sku.name, orient: sku.orient, dgClass, perCarton,
+        },
+        qty: cartons,
       });
     }
   });
@@ -781,7 +832,8 @@ function renderReport() {
     </div>
     <div class="rep-grid">
       <div class="rep-kv"><div class="k">SKU</div><div class="v">${sku.sku || '-'}</div></div>
-      <div class="rep-kv"><div class="k">总箱数</div><div class="v">${fmt(sku.qty)}</div></div>
+      <div class="rep-kv"><div class="k">总箱数</div><div class="v">${fmt(r.needCount)}</div></div>
+      <div class="rep-kv"><div class="k">总件数</div><div class="v">${fmt(r.innerUnits)}<span style="font-size:12px;color:var(--muted)">（每箱${r.perCarton}件）</span></div></div>
       <div class="rep-kv"><div class="k">所需柜量</div><div class="v">${r.containersNeeded} × ${r.container.name}</div></div>
       <div class="rep-kv"><div class="k">单柜载重</div><div class="v">${fmt(r.totalWeight)} kg</div></div>
       <div class="rep-kv"><div class="k">体积装载率</div><div class="v">${(r.fillRate*100).toFixed(1)}%</div></div>
@@ -795,7 +847,7 @@ function renderReport() {
         <tr><td>外箱尺寸</td><td>${sku.L}×${sku.W}×${sku.H} mm</td><td>单箱 ${sku.weight} kg</td></tr>
         ${p ? `<tr><td>托盘方案</td><td>${p.cfg.PL}×${p.cfg.PW} mm · ${p.layers}层</td><td>每托 ${p.totalBoxes} 箱 / ${fmt(p.loadWeight)} kg</td></tr>` : ''}
         <tr><td>单柜装载</td><td>${r.perFloor} 地面 × ${r.byHeight} 层</td><td>${r.perContainer} ${r.mode}/柜</td></tr>
-        <tr><td>总计</td><td>${r.container.name} × ${r.containersNeeded}</td><td>${fmt(sku.qty)} 箱</td></tr>
+        <tr><td>总计</td><td>${r.container.name} × ${r.containersNeeded}</td><td>${fmt(r.needCount)} 箱 / ${fmt(r.innerUnits)} 件</td></tr>
       </tbody>
     </table>
     <h3>重量分布</h3>
@@ -808,14 +860,17 @@ function renderReport() {
 function renderMultiReport(el, mr) {
   const c = mr.container;
   const date = new Date().toLocaleDateString('zh-CN');
+  const pcOf = s => (s.unit.perCarton > 1 ? s.unit.perCarton : 1);
   const legend = mr.summary.map(s =>
-    `<span class="lg"><i style="background:#${s.color.toString(16).padStart(6, '0')}"></i>${s.unit.label || '-'}（装${s.placed}${s.unplaced > 0 ? '/未' + s.unplaced : ''}）</span>`).join('');
+    `<span class="lg"><i style="background:#${s.color.toString(16).padStart(6, '0')}"></i>${s.unit.label || '-'}（装${s.placed}箱/${(s.placed * pcOf(s))}件${s.unplaced > 0 ? '/未' + s.unplaced + '箱' : ''}）</span>`).join('');
   const avg = mr.containers.length ? mr.containers.reduce((s, x) => s + x.fillRate, 0) / mr.containers.length : 0;
+  const totalInner = mr.summary.reduce((a, s) => a + s.placed * pcOf(s), 0);
+  const unplacedInner = mr.summary.reduce((a, s) => a + s.unplaced * pcOf(s), 0);
   const blocks = mr.containers.map(cc => {
     const rows = mr.summary.map((s, i) => ({ s, n: cc.placedByItem[i] || 0 })).filter(x => x.n > 0);
-    return `<div class="cont-block"><b>柜 #${cc.idx}</b>（${cc.totalCount} 件 · ${(cc.fillRate*100).toFixed(1)}% · ${fmt(cc.totalWeight)}kg）
-      <table><thead><tr><th>货物</th><th>数量</th></tr></thead>
-      <tbody>${rows.map(x => `<tr><td>${x.s.unit.label || '-'}</td><td>${x.n}</td></tr>`).join('')}</tbody></table></div>`;
+    return `<div class="cont-block"><b>柜 #${cc.idx}</b>（${cc.totalCount} 箱 / ${rows.reduce((a, x) => a + x.n * pcOf(x.s), 0)} 件 · ${(cc.fillRate*100).toFixed(1)}% · ${fmt(cc.totalWeight)}kg）
+      <table><thead><tr><th>货物</th><th>箱数</th><th>件数</th></tr></thead>
+      <tbody>${rows.map(x => `<tr><td>${x.s.unit.label || '-'}</td><td>${x.n}</td><td>${x.n * pcOf(x.s)}</td></tr>`).join('')}</tbody></table></div>`;
   }).join('');
   el.innerHTML = `
     <div class="rep-h">
@@ -825,16 +880,19 @@ function renderMultiReport(el, mr) {
     </div>
     <div class="rep-grid">
       <div class="rep-kv"><div class="k">所需柜量</div><div class="v">${mr.totalContainers} × ${c.name}</div></div>
-      <div class="rep-kv"><div class="k">已装总件数</div><div class="v">${fmt(mr.totalBoxes)}</div></div>
-      <div class="rep-kv"><div class="k">未装件数</div><div class="v">${mr.unplaced}</div></div>
+      <div class="rep-kv"><div class="k">已装总箱数</div><div class="v">${fmt(mr.totalBoxes)}</div></div>
+      <div class="rep-kv"><div class="k">已装总件数</div><div class="v">${fmt(totalInner)}</div></div>
+      <div class="rep-kv"><div class="k">未装箱数</div><div class="v">${mr.unplaced}<span style="font-size:12px;color:var(--muted)">（${fmt(unplacedInner)}件）</span></div></div>
       <div class="rep-kv"><div class="k">平均装载率</div><div class="v">${(avg*100).toFixed(1)}%</div></div>
     </div>
     <h3>货物图例</h3><div class="legend">${legend}</div>
     <h3>分柜汇总</h3>
     <table>
-      <thead><tr><th>柜号</th><th>装载率</th><th>载重(kg)</th><th>重心偏移</th><th>件数</th></tr></thead>
-      <tbody>${mr.containers.map(cc =>
-        `<tr><td>#${cc.idx}</td><td>${(cc.fillRate*100).toFixed(1)}%</td><td>${fmt(cc.totalWeight)}</td><td>${(cc.cog.offset*100).toFixed(1)}%</td><td>${cc.totalCount}</td></tr>`).join('')}</tbody>
+      <thead><tr><th>柜号</th><th>装载率</th><th>载重(kg)</th><th>重心偏移</th><th>箱数</th><th>件数</th></tr></thead>
+      <tbody>${mr.containers.map(cc => {
+        const inner = mr.summary.reduce((a, s, i) => a + (cc.placedByItem[i] || 0) * (s.unit.perCarton > 1 ? s.unit.perCarton : 1), 0);
+        return `<tr><td>#${cc.idx}</td><td>${(cc.fillRate*100).toFixed(1)}%</td><td>${fmt(cc.totalWeight)}</td><td>${(cc.cog.offset*100).toFixed(1)}%</td><td>${cc.totalCount}</td><td>${fmt(inner)}</td></tr>`;
+      }).join('')}</tbody>
     </table>
     <h3>各柜货物构成</h3>${blocks}`;
   // IMDG 隔离摘要

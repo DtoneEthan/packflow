@@ -64,6 +64,7 @@
             <label>单箱毛重 (kg)<input type="number" id="f-weight" min="0" step="0.1" value="8" /></label>
             <label>抗压强度 (kg)<input type="number" id="f-maxstack" min="0" value="120" title="可承受的堆叠压重" /></label>
             <label>订单数量 (箱)<input type="number" id="f-qty" min="1" value="200" /></label>
+            <label>每箱装几件 (内件)<input type="number" id="f-percarton" min="1" value="1" title="一个外箱里装几件内件，用于按件换算箱数、报告件数" /></label>
             <label class="row-check"><input type="checkbox" id="f-fragile" /> 易碎 / 禁止倒置</label>
             <label>允许朝向
               <select id="f-orient">
@@ -194,10 +195,21 @@
         <h3 style="margin-top:18px">装载货物</h3>
         <div id="cargo-source" class="radio-group">
           <label class="row-check"><input type="radio" name="src" value="pallet" checked /> 单货·托盘方案</label>
-          <label class="row-check"><input type="radio" name="src" value="carton" /> 单货·散箱装载</label>
-          <label class="row-check"><input type="radio" name="src" value="mix" /> 多货多柜混装</label>
+          <label class="row-check"><input type="radio" name="src" value="carton" /> 单货·整箱装载</label>
+          <label class="row-check"><input type="radio" name="src" value="mix" /> 多货·箱规混装</label>
         </div>
         <select id="cont-sku" class="full-select" style="margin-top:10px"></select>
+        <div id="c-qty-block" style="display:none; margin-top:12px">
+          <h3>装载数量</h3>
+          <label class="stk">数量 <input type="number" id="c-qty" min="1" value="200" /></label>
+          <label class="stk">单位
+            <select id="c-qtyunit">
+              <option value="carton">箱（整箱装）</option>
+              <option value="unit">件（拆箱混装）</option>
+            </select>
+          </label>
+          <div class="muted" id="c-qty-hint" style="font-size:12px;margin-top:6px"></div>
+        </div>
         <div id="mix-panel" style="display:none; margin-top:12px">
           <h3>混装货物清单</h3>
           <div id="mix-goods" class="goods-table"></div>

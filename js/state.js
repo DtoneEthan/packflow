@@ -26,7 +26,8 @@ export function makeCargoUnit(o = {}) {
     L: +o.L || 400, W: +o.W || 300, H: +o.H || 250,
     weight: +o.weight || 5,
     maxStack: +o.maxStack || 100,   // 抗压 kg
-    qty: +o.qty || 100,
+    qty: +o.qty || 100,             // 订单数量（箱数）
+    perCarton: +o.perCarton > 1 ? +o.perCarton : 1, // 每箱装几件内件（用于按件换算箱数 / 报告件数）
     fragile: !!o.fragile,
     orient: o.orient || 'thishead', // thishead=仅正立 / flip=可翻转
     // 危险品申报（IMDG）：是否危险品 / 类别 / UN号 / 正确运输名称 / 包装类
