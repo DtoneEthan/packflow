@@ -25,6 +25,8 @@
       </div>
     </div>
     <nav class="steps">
+      <button class="step" data-tab="ocr"><span class="dot">📷</span>识别装柜</button>
+      <span class="arrow">→</span>
       <button class="step active" data-tab="design"><span class="dot">1</span>包装设计</button>
       <span class="arrow">→</span>
       <button class="step" data-tab="pallet"><span class="dot">2</span>托盘码放</button>
@@ -243,6 +245,49 @@
           <button id="btn-print" class="btn primary sm">打印 / 导出 PDF</button>
         </div>
         <div id="report-body"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ========== 0. 识别装柜 ========== -->
+  <main class="tab-panel" id="tab-ocr">
+    <div class="content wide">
+      <div class="card">
+        <h2>📷 照片识别装柜（AI 自动建单）</h2>
+        <p class="hint">上传装箱单 / 规格表 / 货物尺寸标签的<strong>照片或截图</strong>，系统在本机用 OCR 识别尺寸、重量、数量，自动生成货物单元并可直接出装柜方案。<b>图片不会上传到任何服务器。</b>支持中文与英文。识别结果可逐条校对后再加入。</p>
+        <div id="ocr-drop" class="ocr-drop">
+          <div class="ocr-drop-inner">
+            <div class="ocr-ic">📸</div>
+            <div>把图片拖到这里，或 <span class="link">点击选择图片</span></div>
+            <div class="muted" style="font-size:12px;margin-top:4px">支持 PNG / JPG / WEBP / 多张（逐张识别合并）</div>
+          </div>
+          <input type="file" id="ocr-file" accept="image/*" multiple hidden />
+        </div>
+        <div class="actions" style="margin-top:14px">
+          <button id="btn-ocr-run" class="btn primary" disabled>开始识别</button>
+          <button id="btn-ocr-clear" class="btn ghost" disabled>清空</button>
+          <span id="ocr-status" class="ocr-status"></span>
+        </div>
+        <div id="ocr-progress" class="ocr-progress" style="display:none">
+          <div class="bar"><div class="fill" id="ocr-fill"></div></div>
+          <div class="ocr-progress-label" id="ocr-progress-label">准备中…</div>
+        </div>
+        <details class="ocr-raw">
+          <summary>查看识别出的原始文字（用于核对识别质量）</summary>
+          <pre id="ocr-raw-text"></pre>
+        </details>
+      </div>
+      <div class="card" id="ocr-result-card" style="display:none">
+        <div class="viz-head">
+          <h3>识别结果（可逐条校对，✎ 标记的字段为系统未能识别、需你确认）</h3>
+          <div class="viz-tools">
+            <button id="btn-ocr-add" class="btn primary sm">加入 SKU</button>
+            <button id="btn-ocr-add-go" class="btn ghost sm">加入并去装柜 →</button>
+          </div>
+        </div>
+        <div class="ocr-preview-wrap">
+          <table class="ocr-preview" id="ocr-preview"></table>
+        </div>
       </div>
     </div>
   </main>

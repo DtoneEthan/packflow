@@ -204,3 +204,35 @@ h3{font-size:14px;margin:0 0 10px;color:#374151;}
 .site-footer{margin-top:auto;padding:16px 22px;text-align:center;color:var(--muted);font-size:12px;
   border-top:1px solid var(--line);background:var(--panel);letter-spacing:.2px;}
 .site-footer a{color:var(--brand);text-decoration:none;}
+
+/* ===== 识别装柜 ===== */
+.ocr-drop{border:2px dashed var(--line);border-radius:14px;background:var(--panel);padding:30px 18px;
+  text-align:center;cursor:pointer;transition:.15s;}
+.ocr-drop.drag{border-color:var(--brand);background:rgba(37,99,235,.06);}
+.ocr-drop-inner{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--ink);}
+.ocr-ic{font-size:34px;}
+.ocr-drop .link{color:var(--brand);cursor:pointer;text-decoration:underline;}
+.ocr-status{font-size:13px;color:var(--muted);margin-left:6px;}
+.ocr-status.err{color:#dc2626;}
+.ocr-status.ok{color:#16a34a;}
+.ocr-progress{margin-top:14px;}
+.ocr-progress .bar{height:8px;border-radius:6px;background:var(--line);overflow:hidden;}
+.ocr-progress .fill{height:100%;width:0;background:linear-gradient(90deg,var(--brand),#22c55e);transition:width .2s;}
+.ocr-progress-label{font-size:12px;color:var(--muted);margin-top:6px;}
+.ocr-raw{margin-top:14px;font-size:13px;}
+.ocr-raw pre{white-space:pre-wrap;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:12px;max-height:220px;overflow:auto;font-size:12px;color:var(--ink);}
+.ocr-preview-wrap{overflow-x:auto;margin-top:6px;}
+table.ocr-preview{border-collapse:collapse;width:100%;min-width:760px;font-size:13px;}
+table.ocr-preview th,table.ocr-preview td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:middle;}
+table.ocr-preview thead th{background:var(--panel);color:var(--muted);font-weight:600;position:sticky;top:0;}
+table.ocr-preview input{width:100%;min-width:54px;border:1px solid transparent;background:transparent;color:var(--ink);
+  font:inherit;padding:3px 4px;border-radius:5px;}
+table.ocr-preview input:focus{outline:none;border-color:var(--brand);background:#fff;}
+table.ocr-preview .col-inc{width:42px;text-align:center;}
+.review-badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:6px;margin:1px;
+  background:#fef3c7;color:#92400e;border:1px solid #fde68a;cursor:help;}
+.review-badge.size{background:#fee2e2;color:#991b1b;border-color:#fecaca;}
+.ocr-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.ocr-thumbs img{height:64px;border-radius:8px;border:1px solid var(--line);}
+

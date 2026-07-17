@@ -2,6 +2,7 @@ import { state, CONTAINERS, makeCargoUnit, getSku, saveLocal, loadLocal, exportS
 import { pushSkus, pullSkus } from './cloud.js';
 import { analyzePallet, packContainer, checkConstraints, packMultiContainer, checkMultiConstraints, IMDG, checkDGCompatibility, partitionDG, mergeMultiResults, checkDGSegregation3m } from './algorithms.js';
 import { Scene3D } from './viz.js';
+import { recognizeImage, parseOcrText } from './ocr.js';
 
 // ---------- 工具 ----------
 const $ = s => document.querySelector(s);
@@ -370,6 +371,126 @@ $('#btn-load').addEventListener('click', () => {
   if (loadLocal()) { renderSkuList(); const c = getSku(state.activeSkuId); if (c) fillCartonForm(c); toast('已读取本地方案'); }
   else toast('没有找到已保存的方案');
 });
+
+// ==================== 0. 识别装柜（OCR 自动建单） ====================
+let ocrItems = [];
+let ocrFiles = [];
+const ocrFile = $('#ocr-file'), ocrDrop = $('#ocr-drop');
+const ocrRun = $('#btn-ocr-run'), ocrClear = $('#btn-ocr-clear');
+const ocrStatus = $('#ocr-status'), ocrProgress = $('#ocr-progress');
+const ocrFill = $('#ocr-fill'), ocrProgLabel = $('#ocr-progress-label');
+const ocrRaw = $('#ocr-raw-text'), ocrResultCard = $('#ocr-result-card');
+const ocrPreview = $('#ocr-preview');
+
+function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function setOcrStatus(msg, cls) { ocrStatus.textContent = msg; ocrStatus.className = 'ocr-status' + (cls ? ' ' + cls : ''); }
+function ocrRenderThumbs() {
+  let box = $('#ocr-thumbs');
+  if (!box) { box = document.createElement('div'); box.id = 'ocr-thumbs'; box.className = 'ocr-thumbs'; ocrDrop.after(box); }
+  box.innerHTML = ocrFiles.map(f => `<img src="${URL.createObjectURL(f)}" title="${escAttr(f.name)}">`).join('');
+}
+function ocrCollect(files) {
+  for (const f of files) if (f && f.type && f.type.startsWith('image/')) ocrFiles.push(f);
+  ocrRun.disabled = ocrFiles.length === 0;
+  ocrClear.disabled = ocrFiles.length === 0;
+  setOcrStatus(`已选择 ${ocrFiles.length} 张图片，点击「开始识别」`, '');
+  ocrRenderThumbs();
+}
+ocrFile.addEventListener('change', e => ocrCollect([...e.target.files]));
+['dragover', 'dragenter'].forEach(ev => ocrDrop.addEventListener(ev, e => { e.preventDefault(); ocrDrop.classList.add('drag'); }));
+['dragleave', 'drop'].forEach(ev => ocrDrop.addEventListener(ev, e => { e.preventDefault(); ocrDrop.classList.remove('drag'); }));
+ocrDrop.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files) ocrCollect([...e.dataTransfer.files]); });
+ocrDrop.addEventListener('click', () => ocrFile.click());
+
+ocrClear.addEventListener('click', () => {
+  ocrFiles = []; ocrItems = [];
+  ocrRun.disabled = true; ocrClear.disabled = true;
+  ocrResultCard.style.display = 'none'; ocrRaw.textContent = ''; ocrProgress.style.display = 'none';
+  setOcrStatus('');
+  const box = $('#ocr-thumbs'); if (box) box.remove();
+});
+
+ocrRun.addEventListener('click', async () => {
+  if (!ocrFiles.length) return;
+  ocrRun.disabled = true; ocrClear.disabled = true;
+  ocrProgress.style.display = 'block'; ocrFill.style.width = '0%';
+  setOcrStatus('正在识别…', '');
+  let allText = '';
+  try {
+    for (let i = 0; i < ocrFiles.length; i++) {
+      ocrProgLabel.textContent = `识别第 ${i + 1}/${ocrFiles.length} 张…`;
+      const txt = await recognizeImage(ocrFiles[i], (label, pct) => {
+        ocrProgLabel.textContent = `第${i + 1}张 ${label} ${pct}%`;
+        const base = ocrFiles.length > 1 ? (i / ocrFiles.length * 100) : 0;
+        ocrFill.style.width = (base + pct / ocrFiles.length) + '%';
+      });
+      allText += (i ? '\n' : '') + txt;
+    }
+    ocrFill.style.width = '100%';
+    ocrProgLabel.textContent = '识别完成，正在解析…';
+    ocrRaw.textContent = allText.trim() || '(未识别出文字)';
+    ocrItems = parseOcrText(allText);
+    window.__ocrRawText = allText; window.__ocrItems = ocrItems; // 调试钩子（供端到端验证读取真实识别文本）
+    if (!ocrItems.length) {
+      setOcrStatus('未能从图片中识别出尺寸/货物信息，请换更清晰的图，或改用「包装设计」手动录入', 'err');
+      ocrProgress.style.display = 'none'; ocrRun.disabled = false; ocrClear.disabled = false; return;
+    }
+    renderOcrPreview(ocrItems);
+    ocrResultCard.style.display = 'block';
+    setOcrStatus(`成功识别 ${ocrItems.length} 条货物，请校对后加入`, 'ok');
+  } catch (err) {
+    console.error(err);
+    setOcrStatus('识别失败：' + (err && err.message ? err.message : err), 'err');
+  } finally {
+    ocrProgress.style.display = 'none'; ocrRun.disabled = false; ocrClear.disabled = false;
+  }
+});
+
+function ocrReviewBadges(review) {
+  const map = { weight: '重量', qty: '数量', sku: '编号', size: '尺寸', unit: '单位' };
+  return (review || []).map(r => `<span class="review-badge ${r === 'size' ? 'size' : ''}" title="系统未能自动识别，请确认">✎ ${map[r] || r}</span>`).join('');
+}
+function renderOcrPreview(items) {
+  const head = `<thead><tr><th class="col-inc">加入</th><th>SKU/编号</th><th>名称</th><th>长(mm)</th><th>宽(mm)</th><th>高(mm)</th><th>重(kg)</th><th>数量</th><th>需确认</th></tr></thead>`;
+  const rows = items.map((it, i) => `<tr data-i="${i}">
+    <td class="col-inc"><input type="checkbox" data-inc checked></td>
+    <td><input data-f="sku" value="${escAttr(it.sku)}"></td>
+    <td><input data-f="name" value="${escAttr(it.name)}"></td>
+    <td><input data-f="L" type="number" value="${it.L}"></td>
+    <td><input data-f="W" type="number" value="${it.W}"></td>
+    <td><input data-f="H" type="number" value="${it.H}"></td>
+    <td><input data-f="weight" type="number" step="0.1" value="${it.weight}"></td>
+    <td><input data-f="qty" type="number" value="${it.qty}"></td>
+    <td>${ocrReviewBadges(it.review)}</td>
+  </tr>`).join('');
+  ocrPreview.innerHTML = head + '<tbody>' + rows + '</tbody>';
+}
+function commitOcrItems(goContainer) {
+  const rows = [...ocrPreview.querySelectorAll('tbody tr')];
+  let n = 0;
+  for (const tr of rows) {
+    if (!tr.querySelector('input[data-inc]').checked) continue;
+    const get = f => tr.querySelector(`input[data-f="${f}"]`).value;
+    state.skus.push(makeCargoUnit({
+      sku: get('sku').trim(), name: get('name').trim(),
+      L: +get('L') || 400, W: +get('W') || 300, H: +get('H') || 250,
+      weight: +get('weight') || 1, qty: +get('qty') || 1, maxStack: 100,
+    }));
+    n++;
+  }
+  if (!n) { toast('请至少勾选一条'); return; }
+  state.activeSkuId = state.skus[state.skus.length - 1].id;
+  saveLocal(); renderSkuList();
+  toast(`已加入 ${n} 个 SKU`);
+  if (goContainer) {
+    // 直接切到「散箱装载」模式，让新识别的 SKU 立即出现在装柜下拉，便于一键出方案
+    const cartonRadio = document.querySelector('input[name="src"][value="carton"]');
+    if (cartonRadio) cartonRadio.checked = true;
+    switchTab('container');
+  }
+}
+$('#btn-ocr-add').addEventListener('click', () => commitOcrItems(false));
+$('#btn-ocr-add-go').addEventListener('click', () => commitOcrItems(true));
 
 // ==================== 初始化 ====================
 function seed() {
