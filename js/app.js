@@ -2,7 +2,7 @@ import { state, CONTAINERS, makeCargoUnit, getSku, saveLocal, loadLocal, exportS
 import { pushSkus, pullSkus } from './cloud.js';
 import { analyzePallet, packContainer, checkConstraints, packMultiContainer, checkMultiConstraints, IMDG, checkDGCompatibility, partitionDG, mergeMultiResults, checkDGSegregation3m } from './algorithms.js';
 import { Scene3D } from './viz.js';
-import { recognizeImage, parseOcrText } from './ocr.js';
+import { recognizeImage, recognizeImages, parseOcrText, mergeOcrItems } from './ocr.js';
 
 // ---------- 工具 ----------
 const $ = s => document.querySelector(s);
@@ -414,30 +414,37 @@ ocrRun.addEventListener('click', async () => {
   if (!ocrFiles.length) return;
   ocrRun.disabled = true; ocrClear.disabled = true;
   ocrProgress.style.display = 'block'; ocrFill.style.width = '0%';
-  setOcrStatus('正在识别…', '');
-  let allText = '';
+  setOcrStatus('正在准备识别引擎…', '');
   try {
-    for (let i = 0; i < ocrFiles.length; i++) {
-      ocrProgLabel.textContent = `识别第 ${i + 1}/${ocrFiles.length} 张…`;
-      const txt = await recognizeImage(ocrFiles[i], (label, pct) => {
-        ocrProgLabel.textContent = `第${i + 1}张 ${label} ${pct}%`;
-        const base = ocrFiles.length > 1 ? (i / ocrFiles.length * 100) : 0;
-        ocrFill.style.width = (base + pct / ocrFiles.length) + '%';
-      });
-      allText += (i ? '\n' : '') + txt;
-    }
+    // 逐张识别（复用同一 worker），再逐图独立解析，最后跨图合并去重——避免多图文字拼一起导致的跨图污染
+    const perImage = await recognizeImages(ocrFiles, (cb) => {
+      if (cb.phase === 'image') {
+        ocrProgLabel.textContent = `第 ${cb.i + 1}/${cb.total} 张 · ${cb.label} ${cb.pct}%`;
+        ocrFill.style.width = ((cb.i + cb.pct / 100) / cb.total * 100) + '%';
+      } else {
+        ocrProgLabel.textContent = `${cb.label} ${cb.pct}%`;
+      }
+    });
     ocrFill.style.width = '100%';
     ocrProgLabel.textContent = '识别完成，正在解析…';
-    ocrRaw.textContent = allText.trim() || '(未识别出文字)';
-    ocrItems = parseOcrText(allText);
-    window.__ocrRawText = allText; window.__ocrItems = ocrItems; // 调试钩子（供端到端验证读取真实识别文本）
+
+    // 原始文字按图分段展示，便于核对每图识别质量
+    ocrRaw.textContent = perImage.map((p, i) =>
+      `===== 图 ${i + 1} / ${perImage.length}：${p.file.name} =====\n` + (p.text.trim() || '(未识别出文字)')
+    ).join('\n\n');
+
+    // 逐图解析 → 跨图合并（同 SKU+尺寸累加数量，并记录来源图号）
+    ocrItems = mergeOcrItems(perImage.map((p, i) => ({ items: parseOcrText(p.text), src: i, file: p.file })));
+    window.__ocrRawText = perImage.map(p => p.text).join('\n');
+    window.__ocrItems = ocrItems; // 调试钩子（供端到端验证读取真实识别文本）
+
     if (!ocrItems.length) {
       setOcrStatus('未能从图片中识别出尺寸/货物信息，请换更清晰的图，或改用「包装设计」手动录入', 'err');
       ocrProgress.style.display = 'none'; ocrRun.disabled = false; ocrClear.disabled = false; return;
     }
     renderOcrPreview(ocrItems);
     ocrResultCard.style.display = 'block';
-    setOcrStatus(`成功识别 ${ocrItems.length} 条货物，请校对后加入`, 'ok');
+    setOcrStatus(`成功识别 ${ocrItems.length} 条货物（来自 ${perImage.length} 张图），请校对后加入`, 'ok');
   } catch (err) {
     console.error(err);
     setOcrStatus('识别失败：' + (err && err.message ? err.message : err), 'err');
@@ -446,16 +453,22 @@ ocrRun.addEventListener('click', async () => {
   }
 });
 
+// 跨图合并（逻辑位于 ocr.js 的 mergeOcrItems）：逐图解析 → 按 sku+尺寸去重，同键累加数量并记录来源图号。
+function ocrSrcBadges(it) {
+  return (it.src || []).map(s => `<span class="src-badge" title="来自第 ${s + 1} 张图">图${s + 1}</span>`).join('');
+}
+
 function ocrReviewBadges(review) {
   const map = { weight: '重量', qty: '数量', sku: '编号', size: '尺寸', unit: '单位' };
   return (review || []).map(r => `<span class="review-badge ${r === 'size' ? 'size' : ''}" title="系统未能自动识别，请确认">✎ ${map[r] || r}</span>`).join('');
 }
 function renderOcrPreview(items) {
-  const head = `<thead><tr><th class="col-inc">加入</th><th>SKU/编号</th><th>名称</th><th>长(mm)</th><th>宽(mm)</th><th>高(mm)</th><th>重(kg)</th><th>数量</th><th>需确认</th></tr></thead>`;
+  const head = `<thead><tr><th class="col-inc">加入</th><th>SKU/编号</th><th>名称</th><th>来源</th><th>长(mm)</th><th>宽(mm)</th><th>高(mm)</th><th>重(kg)</th><th>数量</th><th>需确认</th></tr></thead>`;
   const rows = items.map((it, i) => `<tr data-i="${i}">
     <td class="col-inc"><input type="checkbox" data-inc checked></td>
     <td><input data-f="sku" value="${escAttr(it.sku)}"></td>
     <td><input data-f="name" value="${escAttr(it.name)}"></td>
+    <td class="col-src">${ocrSrcBadges(it)}</td>
     <td><input data-f="L" type="number" value="${it.L}"></td>
     <td><input data-f="W" type="number" value="${it.W}"></td>
     <td><input data-f="H" type="number" value="${it.H}"></td>

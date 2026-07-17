@@ -26,10 +26,11 @@ export function ensureOcrEngine() {
   return _enginePromise;
 }
 
-// 对一张图片做本地 OCR，返回纯文本。onProgress(statusText, percent)
-export async function recognizeImage(file, onProgress) {
+// 创建并初始化一个 Tesseract worker（含进度回调）。
+// 批量识别时复用同一个 worker，省去为每张图重复加载 wasm 内核与语言包，速度显著提升。
+async function _createWorker(onProgress) {
   const Tesseract = await ensureOcrEngine();
-  const worker = await Tesseract.createWorker('eng+chi_sim', 1, {
+  return Tesseract.createWorker('eng+chi_sim', 1, {
     corePath: TESS_DIR,                         // 目录，内含 4 个 wasm 核心
     workerPath: TESS_DIR + 'worker.min.js',
     langPath: TESS_DIR,                         // 内含 eng/chi_sim 的 traineddata.gz
@@ -47,12 +48,42 @@ export async function recognizeImage(file, onProgress) {
       }
     },
   });
+}
+
+// 对单张图片做本地 OCR（自带 worker 的生命周期），返回纯文本。
+export async function recognizeImage(file, onProgress) {
+  const worker = await _createWorker(onProgress);
   try {
     const ret = await worker.recognize(file);
     return ret.data.text || '';
   } finally {
     await worker.terminate();
   }
+}
+
+// 批量识别：复用同一个 worker 逐张识别，返回 [{ file, text }]。
+// cb({ phase, i, total, label, pct })：phase='prep' 为引擎一次性加载，phase='image' 为第 i 张识别进度（0 起）。
+export async function recognizeImages(files, cb) {
+  if (!files || !files.length) return [];
+  let cur = -1;
+  const worker = await _createWorker((label, pct) => {
+    if (cb) cb(cur < 0
+      ? { phase: 'prep', label, pct }
+      : { phase: 'image', i: cur, total: files.length, label, pct });
+  });
+  const out = [];
+  try {
+    for (let i = 0; i < files.length; i++) {
+      cur = i;
+      const file = files[i];
+      const ret = await worker.recognize(file);
+      out.push({ file, text: ret.data.text || '' });
+      if (cb) cb({ phase: 'image', i, total: files.length, label: '识别文字', pct: 100 });
+    }
+  } finally {
+    await worker.terminate();
+  }
+  return out;
 }
 
 // ---------- 文本解析：OCR 结果 → 结构化 SKU 草稿 ----------
@@ -208,3 +239,27 @@ export function parseOcrText(text) {
   }
   return [...map.values()];
 }
+
+// ---------- 跨图合并（批量 OCR 用） ----------
+// 输入：[{ items, src }]，其中 items 为某张图 parseOcrText 的结果，src 为该图序号（从 0 起）。
+// 输出：去重合并后的 item 列表；相同 sku+尺寸跨图累加数量，并累计记录来源图号（item.src: number[]）。
+export function mergeOcrItems(parsedPerImage) {
+  const map = new Map();
+  const list = [];
+  for (const { items, src } of parsedPerImage) {
+    for (const it of items) {
+      const key = it.sku + '|' + it.L + '|' + it.W + '|' + it.H;
+      if (map.has(key)) {
+        const ex = map.get(key);
+        ex.qty += it.qty;
+        if (ex.src.indexOf(src) < 0) ex.src.push(src);
+      } else {
+        const clone = Object.assign({}, it, { src: [src] });
+        map.set(key, clone);
+        list.push(clone);
+      }
+    }
+  }
+  return list;
+}
+
